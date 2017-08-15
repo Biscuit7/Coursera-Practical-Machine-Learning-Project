@@ -1,0 +1,124 @@
+---
+title: "Exercise Prediction"
+author: "Biscuit7"
+date: "`r format(Sys.Date())`"
+output:
+      html_document:
+            keep_md: TRUE
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(knitr)
+opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE)
+```
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+## Objective
+
+The goal is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. 
+
+## Data 
+
+The training data are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+
+## Required packages
+
+```{r, message=F}
+library(caret)
+library(rpart)
+library(rattle)
+library(randomForest)
+```
+
+
+## Loading and cleaning the data
+
+The following reads in the `training` and `testing` data, removes columns with missing values and those which have no prediction value.
+
+``` {r, include=T}
+trainDF <- read.csv("pml-training.csv", na.strings = c("","NA","#DIV/0!"), header = T, sep = ",")
+trainRM  <- trainDF[, colSums(is.na(trainDF)) == 0] 
+trainClean <- trainRM[, !grepl("^X|timestamp|window", names(trainRM))]
+train <- trainClean[, sapply(trainClean, is.numeric)]
+train$classe <- trainRM$classe
+
+testDF <- read.csv("pml-testing.csv", na.strings = c("","NA","#DIV/0!"), header = T, sep = ",")
+testRM  <- testDF[, colSums(is.na(testDF)) == 0] 
+testClean <- testRM[, !grepl("^X|timestamp|window", names(testRM))]
+test <- testClean[, sapply(testClean, is.numeric)]
+```
+
+## Partitioning the data
+
+We must partition the data into `training` and `validation` set at a 60:40 ratio. Set the seed for reproducibility purposes.
+
+``` {r}
+set.seed(6789) 
+part <- createDataPartition(train$classe, p = 0.60, list = F)
+trainPart <- train[part, ]
+validPart <- train[-part, ]
+```
+
+## Classification tree
+
+``` {r, fig.align='center', fig.width=15, fig.height=15}
+decisionTree <- rpart(classe ~ ., data = trainPart, method = "class")
+fancyRpartPlot(decisionTree, sub = "") 
+```
+
+## Training the prediction model
+
+The `random forest` technique will be used for prediction.
+
+``` {r}
+model <- randomForest(classe ~ ., data = trainPart)
+pred_valid <- predict(model, validPart, type = "class")
+(CM <- confusionMatrix(pred_valid, validPart$classe))
+```
+
+### Accuracy
+
+The `accuracy` of this method is given by:
+
+``` {r}
+CM$overall["Accuracy"]
+```
+
+``` {r, include=F}
+oob <- 1-CM$overall["Accuracy"]
+```
+
+
+The `out-of-sample error` is therefore given by: $`r oob`$.
+
+## Predicting values with test dataset
+
+The predicted values of `classe`.
+
+``` {r}
+predict(model, test, type = "class")
+```
+
+``` {r, include=F}
+pred <- predict(model, test, type = "class")
+pred
+
+pml_write_files <- function(x){
+      n <- length(x)
+      for(i in 1:n){
+            filename <- paste0("problem_id_", i, ".txt")
+            write.table(x[i], file = filename, quote = F, row.names = F, col.names = F)
+      }
+}
+
+pml_write_files(pred)
+```
